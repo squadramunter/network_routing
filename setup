@@ -53,8 +53,6 @@ wifi=`basename -a /sys/class/net/* | grep 'wlan\|wlx\|wlp'`
 
 sudo apt-get update && apt-get upgrade -y && apt-get install git -y
 
-git clone https://github.com/squadramunter/network_routing.git /tmp/network_routing
-
 sudo mv /etc/network/interfaces /etc/network/interfaces-old
 
 sudo touch /etc/network/interfaces
@@ -85,7 +83,7 @@ EOM
 sudo ip addr flush $detect && systemctl restart networking.service
 sudo ifdown $detect && ifup $detect
 
-dpkg -i /tmp/network_routing/dnsmasq_2.79-1_all.deb
+sudo apt-get install dnsmasq
 
 sudo mv /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
 
