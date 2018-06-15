@@ -51,11 +51,11 @@ sleep 10
 detect=`basename -a /sys/class/net/* | grep 'eth\|ens\|enp'`
 wifi=`basename -a /sys/class/net/* | grep 'wlan\|wlx\|wlp'`
 
-sudo apt-get update && apt-get upgrade -y && apt-get install git -y
+apt-get update && apt-get upgrade -y && apt-get install git -y
 
-sudo mv /etc/network/interfaces /etc/network/interfaces-old
+mv /etc/network/interfaces /etc/network/interfaces-old
 
-sudo touch /etc/network/interfaces
+touch /etc/network/interfaces
 
 CFILE="/etc/network/interfaces"
 
@@ -80,14 +80,14 @@ iface $detect inet static
     broadcast 172.24.1.255
 EOM
 
-sudo ip addr flush $detect && systemctl restart networking.service
-sudo ifdown $detect && ifup $detect
+ip addr flush $detect && systemctl restart networking.service
+ifdown $detect && ifup $detect
 
-sudo apt-get install dnsmasq
+apt-get install dnsmasq
 
-sudo mv /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
+mv /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
 
-sudo touch /etc/dnsmasq.conf
+touch /etc/dnsmasq.conf
 
 DNSMASQ="/etc/dnsmasq.conf"
 
@@ -103,21 +103,25 @@ EOM
 
 sed -i '/#net.ipv4.ip_forward=1/c\net.ipv4.ip_forward=1' /etc/sysctl.conf
 
-sed -i '/managed=/c\managed=true' /etc/NetworkManager/NetworkManager.conf
+sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 
-sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
+iptables -t nat -A POSTROUTING -o $wifi -j MASQUERADE
+iptables -A FORWARD -i $wifi -o $detect -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i $detect -o $wifi -j ACCEPT
 
-sudo iptables -t nat -A POSTROUTING -o $wifi -j MASQUERADE
-sudo iptables -A FORWARD -i $wifi -o $detect -m state --state RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -A FORWARD -i $detect -o $wifi -j ACCEPT
+apt-get install iptables-persistent -y
 
-sudo apt-get install iptables-persistent -y
+iptables-save > /etc/iptables/rules.v4
+ip6tables-save > /etc/iptables/rules.v6
 
-sudo iptables-save > /etc/iptables/rules.v4
-sudo ip6tables-save > /etc/iptables/rules.v6
+systemctl enable dnsmasq
+systemctl restart dnsmasq
 
-sudo systemctl enable dnsmasq
-sudo systemctl restart dnsmasq
+service network-manager restart
+ifdown $wifi && ifup $wifi
+ifdown $detect && ifup $detect
+
+echo You should reboot your system to make sure everything is working fine!
 
 ;;
 
