@@ -103,6 +103,8 @@ EOM
 
 sed -i '/#net.ipv4.ip_forward=1/c\net.ipv4.ip_forward=1' /etc/sysctl.conf
 
+sed -i '/managed=/c\managed=true' /etc/NetworkManager/NetworkManager.conf
+
 sudo sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 
 sudo iptables -t nat -A POSTROUTING -o $wifi -j MASQUERADE
