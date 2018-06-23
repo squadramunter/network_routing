@@ -101,6 +101,8 @@ bogus-priv           # Never forward addresses in the non-routed address spaces.
 dhcp-range=172.24.1.50,172.24.1.150,12h # Assign IP addresses between 172.24.1.50 and 172.24.1.150 with a 12 hour lease time
 EOM
 
+sed -i '/managed=/c\managed=true' /etc/NetworkManager/NetworkManager.conf
+
 sed -i '/#net.ipv4.ip_forward=1/c\net.ipv4.ip_forward=1' /etc/sysctl.conf
 
 sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
