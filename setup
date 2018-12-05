@@ -48,51 +48,54 @@ fi
 
 sleep 10
 
-detect=`basename -a /sys/class/net/* | grep 'eth\|ens\|enp'`
+ethernet=`basename -a /sys/class/net/* | grep 'eth\|ens\|enp'`
 wifi=`basename -a /sys/class/net/* | grep 'wlan\|wlx\|wlp'`
 
 apt-get update && apt-get upgrade -y && apt-get install git -y
 
 mv /etc/network/interfaces /etc/network/interfaces-old
 
-touch /etc/network/interfaces
+touch /etc/network/interfaces.d/{$wifi,$ethernet}
 
-CFILE="/etc/network/interfaces"
+CFILE="/etc/network/interfaces.d/$ethernet"
 
 /bin/cat <<EOM >$CFILE
 # This file describes the network interfaces available on your system
 # and how to activate them. For more information, see interfaces(5).
-
-source /etc/network/interfaces.d/*
-
-# The loopback network interface
-auto lo
-iface lo inet loopback
-
-allow-hotplug $wifi
-iface $wifi inet dhcp
-
-allow-hotplug $detect
-iface $detect inet static
+# source /etc/network/interfaces.d/*
+# The Ethernet network interface
+allow-hotplug $ethernet
+iface $ethernet inet static
     address 172.24.1.1
     netmask 255.255.255.0
     network 172.24.1.0
     broadcast 172.24.1.255
 EOM
 
-ip addr flush $detect && systemctl restart networking.service
-ifdown $detect && ifup $detect
+CFILE="/etc/network/interfaces.d/$wifi"
+
+/bin/cat <<EOM >$CFILE
+# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+# source /etc/network/interfaces.d/*
+# The Wireless network interface
+allow-hotplug $wifi
+iface $wifi inet dhcp
+EOM
+
+ip addr flush $ethernet && systemctl restart networking.service
+ifdown $ethernet && ifup $ethernet
 
 apt-get install dnsmasq
 
 mv /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
 
-touch /etc/dnsmasq.conf
+touch /etc/dnsmasq.d/$ethernet
 
-DNSMASQ="/etc/dnsmasq.conf"
+DNSMASQ="/etc/dnsmasq.d/$ethernet"
 
 /bin/cat <<EOM >$DNSMASQ
-interface=$detect
+interface=$ethernet
 listen-address=172.24.1.1 # Explicitly specify the address to listen on
 bind-interfaces      # Bind to the interface to make sure we aren't sending things elsewhere
 server=8.8.8.8       # Forward DNS requests to Google DNS
@@ -108,8 +111,8 @@ sed -i '/#net.ipv4.ip_forward=1/c\net.ipv4.ip_forward=1' /etc/sysctl.conf
 sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 
 iptables -t nat -A POSTROUTING -o $wifi -j MASQUERADE
-iptables -A FORWARD -i $wifi -o $detect -m state --state RELATED,ESTABLISHED -j ACCEPT
-iptables -A FORWARD -i $detect -o $wifi -j ACCEPT
+iptables -A FORWARD -i $wifi -o $ethernet -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i $ethernet -o $wifi -j ACCEPT
 
 apt-get install iptables-persistent -y
 
@@ -121,7 +124,7 @@ systemctl restart dnsmasq
 
 service network-manager restart
 ifdown $wifi && ifup $wifi
-ifdown $detect && ifup $detect
+ifdown $ethernet && ifup $ethernet
 
 echo You should reboot your system to make sure everything is working fine!
 
