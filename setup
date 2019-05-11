@@ -11,7 +11,7 @@ while true
 do
   clear
   echo "================================================================================"
-  echo "//      Traffic routing from Wireless to Ethernet made by @SquadraMunter      //"
+  echo "//      Traffic routing from Wireless to Ethernet made by @squadramunter      //"
   echo "================================================================================"
   echo "Enter 1 to setup the routing automatically: "
   echo "Enter 2 to test the network connectivity: "
@@ -53,13 +53,11 @@ wifi=`basename -a /sys/class/net/* | grep 'wlan\|wlx\|wlp'`
 
 apt-get update && apt-get upgrade -y && apt-get install git -y
 
-mv /etc/network/interfaces /etc/network/interfaces-old
-
 touch /etc/network/interfaces.d/{$wifi,$ethernet}
 
-CFILE="/etc/network/interfaces.d/$ethernet"
+CETH="/etc/network/interfaces.d/$ethernet"
 
-/bin/cat <<EOM >$CFILE
+/bin/cat <<EOM >$CETH
 # This file describes the network interfaces available on your system
 # and how to activate them. For more information, see interfaces(5).
 # source /etc/network/interfaces.d/*
@@ -72,9 +70,9 @@ iface $ethernet inet static
     broadcast 172.24.1.255
 EOM
 
-CFILE="/etc/network/interfaces.d/$wifi"
+CWIFI="/etc/network/interfaces.d/$wifi"
 
-/bin/cat <<EOM >$CFILE
+/bin/cat <<EOM >$CWIFI
 # This file describes the network interfaces available on your system
 # and how to activate them. For more information, see interfaces(5).
 # source /etc/network/interfaces.d/*
