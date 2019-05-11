@@ -81,10 +81,12 @@ allow-hotplug $wifi
 iface $wifi inet dhcp
 EOM
 
-ip addr flush $ethernet && systemctl restart networking.service
-ifdown $ethernet && ifup $ethernet
+ip addr flush $ethernet
+systemctl restart networking.service
+ifdown $ethernet
+ifup $ethernet
 
-apt-get install dnsmasq
+apt-get install dnsmasq -y
 
 mv /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
 
@@ -102,29 +104,43 @@ bogus-priv           # Never forward addresses in the non-routed address spaces.
 dhcp-range=172.24.1.50,172.24.1.150,12h # Assign IP addresses between 172.24.1.50 and 172.24.1.150 with a 12 hour lease time
 EOM
 
-# sed -i '/managed=/c\managed=true' /etc/NetworkManager/NetworkManager.conf
-
+## Allow IP Forwarding
 sed -i '/#net.ipv4.ip_forward=1/c\net.ipv4.ip_forward=1' /etc/sysctl.conf
 
 sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
 
+## Set IPTABLES for network routing
 iptables -t nat -A POSTROUTING -o $wifi -j MASQUERADE
 iptables -A FORWARD -i $wifi -o $ethernet -m state --state RELATED,ESTABLISHED -j ACCEPT
 iptables -A FORWARD -i $ethernet -o $wifi -j ACCEPT
 
+## Install IPTABLES-Persistent to load IPTABLES on reboot
 apt-get install iptables-persistent -y
 
+## Save the IPTABLES Permanent
 iptables-save > /etc/iptables/rules.v4
 ip6tables-save > /etc/iptables/rules.v6
 
+## Enable DNSMasq and restart
 systemctl enable dnsmasq
 systemctl restart dnsmasq
 
-# service network-manager restart
-ifdown $wifi && ifup $wifi
-ifdown $ethernet && ifup $ethernet
+## service network-manager restart
+ifdown $wifi
+ifup $wifi
+ifdown $ethernet
+ifup $ethernet
 
-echo You should reboot your system to make sure everything is working fine!
+echo "About to reboot your device!"
+read -p "Would you like to proceed y/n? " -n 1 -r
+echo
+
+if [[ $REPLY =~ ^[Yy]$ ]]
+then
+   reboot
+else
+   echo "Please reboot your system!"
+fi
 
 ;;
 
