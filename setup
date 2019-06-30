@@ -1,5 +1,15 @@
 #!/bin/bash
 
+## Before using this script keep in mind that you need a FQDN before continue
+
+virtualhost="https://raw.githubusercontent.com/squadramunter/nextcloud_installer/master/nextcloud"
+
+nextcloud_version="16.0.1"
+
+php_version="7.3"
+
+timezone="Europe/Amsterdam"
+
 # Make sure only root can run our script
 if [[ $EUID -ne 0 ]]; then
    echo "This script must be run as root" 1>&2
@@ -11,10 +21,10 @@ while true
 do
   clear
   echo "================================================================================"
-  echo "//      Traffic routing from Wireless to Ethernet made by @squadramunter      //"
+  echo "//                Nextcloud installer made by @squadramunter                  //"
   echo "================================================================================"
-  echo "Enter 1 to setup the routing automatically: "
-  echo "Enter 2 to test the network connectivity: "
+  echo "Enter 1 to install Nextcloud automatically: "
+  echo "Enter 2 to get a Let's Encrypt certificate: "
   echo "Enter q to exit the menu q: "
   echo -e "\n"
   echo -e "Enter your selection \c"
@@ -22,142 +32,159 @@ do
   case "$answer" in
 1)
 
-if eth=`basename -a /sys/class/net/* | grep eth`; then
-  echo "Adapter "$eth" is alive and working properly..."
+sudo apt-get update
+
+sudo apt install -y nginx unzip curl
+
+sudo systemctl stop nginx.service
+
+sed -i '/server_names_hash_bucket_size 64;/c\server_names_hash_bucket_size 64;' /etc/nginx/nginx.conf
+
+sleep 2
+
+sudo systemctl start nginx.service
+
+sleep 2
+
+sudo systemctl enable nginx.service
+
+sudo apt install -y mariadb-server mariadb-client
+
+sudo mysql_secure_installation
+
+sleep 2
+
+sudo systemctl restart mariadb.service
+
+sudo apt-get install -y software-properties-common
+
+sudo add-apt-repository -y ppa:ondrej/php
+
+sudo apt update
+
+sudo apt install -y php$php_version-fpm php$php_version-mbstring php$php_version-xmlrpc php$php_version-soap php$php_version-apcu \
+php$php_version-smbclient php$php_version-ldap php$php_version-redis php$php_version-gd php$php_version-xml php$php_version-intl php$php_version-json \
+php$php_version-imagick php$php_version-mysql php$php_version-cli php$php_version-ldap php$php_version-zip php$php_version-curl
+
+## Change PHP ini file
+
+sed -i '/file_uploads/c\file_uploads=On' /etc/php/$php_version/fpm/php.ini
+sed -i '/allow_url_fopen/c\allow_url_fopen=On' /etc/php/$php_version/fpm/php.ini
+sed -i '/memory_limit/c\memory_limit=256M' /etc/php/$php_version/fpm/php.ini
+sed -i '/upload_max_filesize/c\upload_max_filesize=100M' /etc/php/$php_version/fpm/php.ini
+sed -i '/display_errors/c\display_errors=Off' /etc/php/$php_version/fpm/php.ini
+sed -i '/cgi.fix_pathinfo/c\cgi.fix_pathinfo=0' /etc/php/$php_version/fpm/php.ini
+sed -i "/date.timezone/c\date.timezone=${timezone}" /etc/php/$php_version/fpm/php.ini
+
+## Create Nextcloud Database
+
+# create database
+read -p "Please enter a database name for Nextcloud: " -e NDATABASE
+
+# create username
+read -p "Please enter a username for Nextcloud: " -e NUSERNAME
+
+# create password
+read -p "Please enter a password for Nextcloud: " -s -e NPASSWORD
+
+# If /root/.my.cnf exists then it won't ask for root password
+if [ -f /root/.my.cnf ]; then
+
+    mysql -e "CREATE DATABASE ${NDATABASE};"
+    mysql -e "CREATE USER ${NUSERNAME}@localhost IDENTIFIED BY '${NPASSWORD}';"
+    mysql -e "GRANT ALL PRIVILEGES ON ${NDATABASE}.* TO '${NUSERNAME}'@'localhost' IDENTIFIED BY '${NPASSWORD}' WITH GRANT OPTION;"
+    mysql -e "FLUSH PRIVILEGES;"
+
+# If /root/.my.cnf doesn't exist then it'll ask for root password
+else
+    read -p "Please enter root user MySQL password!: " -s -e rootpasswd
+    mysql -uroot -p${rootpasswd} -e "CREATE DATABASE ${NDATABASE};"
+    mysql -uroot -p${rootpasswd} -e "CREATE USER ${NUSERNAME}@localhost IDENTIFIED BY '${NPASSWORD}';"
+    mysql -uroot -p${rootpasswd} -e "GRANT ALL PRIVILEGES ON ${NDATABASE}.* TO '${NUSERNAME}'@'localhost' IDENTIFIED BY '${NPASSWORD}' WITH GRANT OPTION;"
+    mysql -uroot -p${rootpasswd} -e "FLUSH PRIVILEGES;"
 fi
 
-if ens=`basename -a /sys/class/net/* | grep ens`; then
-  echo "Adapter "$ens" is alive and working properly..."
-fi
+## Download Nextcloud
 
-if enp=`basename -a /sys/class/net/* | grep enp`; then
-  echo "Adapter "$enp" is alive and working properly..."
-fi
+cd /tmp && wget https://download.nextcloud.com/server/releases/nextcloud-$nextcloud_version.zip -O /tmp/nextcloud-$nextcloud_version.zip
+unzip /tmp/nextcloud-$nextcloud_version.zip -d /tmp
 
-if wlan=`basename -a /sys/class/net/* | grep wlan`; then
-  echo "Adapter "$wlan" is alive and working properly..."
-fi
+## Move nextcloud to www root
 
-if wlx=`basename -a /sys/class/net/* | grep wlx`; then
-  echo "Adapter "$wlx" is alive and working properly..."
-fi
+read -p "Enter web root for Nextcloud [/var/www/html]: " NROOT
+NROOT=${NROOT:-/var/www/html}
+echo $NROOT
 
-if wlp=`basename -a /sys/class/net/* | grep wlp`; then
-  echo "Adapter "$wlp" is alive and working properly..."
-fi
+sudo mv /tmp/nextcloud $NROOT
 
-sleep 10
+## Set the right permissions for nextcloud
+sudo chown -R www-data:www-data $NROOT/nextcloud
+sudo chmod -R 755 $NROOT/nextcloud
 
-ethernet=`basename -a /sys/class/net/* | grep 'eth\|ens\|enp'`
-wifi=`basename -a /sys/class/net/* | grep 'wlan\|wlx\|wlp'`
+## Configure Nextcloud VirtualHost for nginx
 
-apt-get update && apt-get upgrade -y && apt-get install git -y
+# enter domainname FQDN for Nextcloud
+read -p "Enter your Domain Name for Nextcloud: " NDOMAIN
+echo "You have set $NDOMAIN as your Domain Name"
+sleep 3
 
-touch /etc/network/interfaces.d/{$wifi,$ethernet}
+NVHOST="/etc/nginx/sites-available/nextcloud"
 
-CETH="/etc/network/interfaces.d/$ethernet"
+wget $virtualhost -O $NVHOST
 
-/bin/cat <<EOM >$CETH
-# This file describes the network interfaces available on your system
-# and how to activate them. For more information, see interfaces(5).
-# source /etc/network/interfaces.d/*
-# The Ethernet network interface
-allow-hotplug $ethernet
-iface $ethernet inet static
-    address 172.24.1.1
-    netmask 255.255.255.0
-    network 172.24.1.0
-    broadcast 172.24.1.255
-EOM
+sed -i "/	server unix:/var/run/php/php7.3-fpm.sock;/c\	server unix:/var/run/php/php${php_version}-fpm.sock;" $NVHOST
 
-CWIFI="/etc/network/interfaces.d/$wifi"
+sed -i "/    server_name  domain.com;/c\    server_name  ${NDOMAIN};" $NVHOST
 
-/bin/cat <<EOM >$CWIFI
-# This file describes the network interfaces available on your system
-# and how to activate them. For more information, see interfaces(5).
-# source /etc/network/interfaces.d/*
-# The Wireless network interface
-allow-hotplug $wifi
-iface $wifi inet dhcp
-EOM
+sed -i "/    server_name  www.domain.com;/c\    server_name  www.${NDOMAIN};" $NVHOST
 
-ip addr flush $ethernet
-systemctl restart networking.service
-ifdown $ethernet
-ifup $ethernet
+sed -i "/    root /var/www/html/nextcloud/;/c\    root ${NROOT}/nextcloud/;" $NVHOST
 
-apt-get install dnsmasq -y
+## Enable Nextcloud VirtualHost
+sudo ln -s /etc/nginx/sites-available/nextcloud /etc/nginx/sites-enabled/
 
-mv /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
+sudo systemctl restart nginx.service
 
-touch /etc/dnsmasq.d/$ethernet
-
-DNSMASQ="/etc/dnsmasq.d/$ethernet"
-
-/bin/cat <<EOM >$DNSMASQ
-interface=$ethernet
-listen-address=172.24.1.1 # Explicitly specify the address to listen on
-bind-interfaces      # Bind to the interface to make sure we aren't sending things elsewhere
-server=1.1.1.1       # Forward DNS requests to Cloudflare DNS
-domain-needed        # Don't forward short names
-bogus-priv           # Never forward addresses in the non-routed address spaces.
-dhcp-range=172.24.1.50,172.24.1.150,12h # Assign IP addresses between 172.24.1.50 and 172.24.1.150 with a 12 hour lease time
-EOM
-
-## Allow IP Forwarding
-sed -i '/#net.ipv4.ip_forward=1/c\net.ipv4.ip_forward=1' /etc/sysctl.conf
-
-sh -c "echo 1 > /proc/sys/net/ipv4/ip_forward"
-
-## Set IPTABLES for network routing
-iptables -t nat -A POSTROUTING -o $wifi -j MASQUERADE
-iptables -A FORWARD -i $wifi -o $ethernet -m state --state RELATED,ESTABLISHED -j ACCEPT
-iptables -A FORWARD -i $ethernet -o $wifi -j ACCEPT
-
-## Install IPTABLES-Persistent to load IPTABLES on reboot
-apt-get install iptables-persistent -y
-
-## Save the IPTABLES Permanent
-iptables-save > /etc/iptables/rules.v4
-ip6tables-save > /etc/iptables/rules.v6
-
-## Enable DNSMasq and restart
-systemctl enable dnsmasq
-systemctl restart dnsmasq
-
-## service network-manager restart
-ifdown $wifi
-ifup $wifi
-ifdown $ethernet
-ifup $ethernet
-
-echo "About to reboot your device!"
+echo "Do you want to setup a Let's Encrypt Certificate?"
 read -p "Would you like to proceed y/n? " -n 1 -r
 echo
 
 if [[ $REPLY =~ ^[Yy]$ ]]
 then
-   reboot
+
+  sed -i "/    # add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload;";/c\     add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload;" $NVHOST
+
+  sudo add-apt-repository -y ppa:certbot/certbot
+  sudo apt install -y python-certbot-nginx
+  sudo certbot --nginx -d $NDOMAIN -d www.$NDOMAIN
+
+  sudo systemctl restart nginx
+
 else
-   echo "Please reboot your system!"
+   echo "Thanks for using Nextcloud Auto Installer made by @SquadraMunter"
+   sleep 5
 fi
 
 ;;
 
 2)
 
-if ping -q -c 1 -W 1 172.24.1.1 >/dev/null; then
-  echo "IPv4 is up and network routing is enabled!"
-else
-  echo "IPv4 is down and network routing is disabled!"
-fi
+read -p "Enter your Domain Name for Let\'s Encrypt: " NDOMAIN
+echo "You have set $NDOMAIN as your Domain Name"
 
-if ping -q -c 1 -W 1 google.com >/dev/null; then
-  echo "Yes! Network connection is working as pretended!"
-else
-  echo "Oops I can't establish a connection!"
-fi
+sleep 3
 
+NVHOST="/etc/nginx/sites-available/nextcloud"
+
+sed -i "/    # add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload;";/c\     add_header Strict-Transport-Security "max-age=15768000; includeSubDomains; preload;" $NVHOST
+
+sudo add-apt-repository -y ppa:certbot/certbot
+sudo apt install -y python-certbot-nginx
+sudo certbot --nginx -d $NDOMAIN -d www.$NDOMAIN
+
+sudo systemctl restart nginx
+
+fi
 ;;
 
 q) exit ;;
